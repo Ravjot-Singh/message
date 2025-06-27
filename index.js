@@ -27,69 +27,61 @@ app.get('/', (req, res) => {
 
 
 
+const connectedUsernames = new Set();
+
 io.on('connection', async (socket) => {
+    const username = socket.handshake.auth.username?.trim().toLowerCase();
 
-     const username = socket.handshake.auth.username;
-     
-    socket.on('chat message', async (msg, clientOffset, callback) => {
+    if (!username) {
+        socket.disconnect();
+        return;
+    }
 
-        let result;
-        try {
+    if (connectedUsernames.has(username)) {
+        socket.disconnect(new Error("Username is taken"));
+        return;
+    }
 
-            result = await Message.create({
-                content: msg,
-                client_offset: clientOffset,
-                senderUsername: username
-            })
+    connectedUsernames.add(username);
+    socket.data.username = username;
 
-
-        } catch (e) {
-            if (e.code === 11000) {
-                if (typeof callback === 'function') {
-
-                    callback();
-
-                }
-
-            }
-            else {
-                console.log("Message insertion failed! ", e);
-            }
-            return;
-        }
-
-        io.emit('chat message', msg, result._id.toString(), clientOffset, username);
-
-        if (typeof callback === 'function') {
-
-            callback();
-
-        }
+    socket.on('disconnect', () => {
+        connectedUsernames.delete(username);
     });
 
+    socket.on('chat message', async (msg, clientOffset, callback) => {
+        try {
+            const result = await Message.create({
+                content: msg,
+                client_offset: clientOffset,
+                senderUsername: username,
+            });
+
+            io.emit('chat message', msg, result._id.toString(), clientOffset, username);
+            if (typeof callback === 'function') callback();
+        } catch (e) {
+            if (e.code === 11000 && typeof callback === 'function') {
+                callback();
+            } else {
+                console.error("Message insertion failed!", e);
+            }
+        }
+    });
 
     if (!socket.recovered) {
         try {
             const serverOffset = socket.handshake.auth.serverOffset || null;
-
-            const query = serverOffset
-                ? { _id: { $gt: serverOffset } }
-                : {};
-
+            const query = serverOffset ? { _id: { $gt: serverOffset } } : {};
             const missedMessages = await Message.find(query).sort({ _id: 1 });
 
             for (const msg of missedMessages) {
                 socket.emit('chat message', msg.content, msg._id.toString(), msg.client_offset, msg.senderUsername);
             }
-
         } catch (e) {
             console.error('Error recovering missed messages', e);
         }
     }
-
 });
-
-
 
 
 

@@ -73,17 +73,76 @@
             margin-right: auto;
             text-align: left;
         }
+
+        #login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #login-form {
+            background: white;
+            padding: 2rem 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            width: 300px;
+        }
+
+        #login-form input {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 1rem;
+        }
+
+        #login-form button {
+            padding: 0.75rem 1rem;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #login-form button:hover {
+            background-color: #357bd8;
+        }
+
+        #login-error {
+            margin: 0;
+            color: red;
+            font-size: 0.9rem;
+            text-align: center;
+        }
     </style>
 
 </head>
 
 <body>
 
-    <ul id="messages"></ul>
-    <form id="form" action="">
-        <input id="input" autocomplete="off" /><button>Send</button>
-        <button id="toggle-btn">Disconnect</button>
-    </form>
+    <div id="login-container">
+        <form id="login-form">
+            <input type="text" id="username-input" placeholder="Enter your name" required />
+            <button type="submit">Login</button>
+            <p id="login-error" style="color: red;"></p>
+        </form>
+    </div>
+
+    <div id="chat-container" style="display: none;">
+        <ul id="messages"></ul>
+        <form id="form" action="">
+            <input id="input" autocomplete="off" />
+            <button>Send</button>
+            <button id="toggle-btn">Disconnect</button>
+        </form>
+    </div>
+
 
 </body>
 
@@ -91,65 +150,80 @@
 <script>
     let counter = 0;
     const sentMessages = new Set();
+    let socket;
 
-    const username = prompt("Enter your name:").trim().toLowerCase();
-
-    const socket = io({
-        auth: {
-            serverOffset: 0,
-            username: username
-        },
-        ackTimeout: 10000,
-        retries: 3,
-
-    });
-
-    socket.username = username;
+    const loginForm = document.getElementById('login-form');
+    const usernameInput = document.getElementById('username-input');
+    const loginError = document.getElementById('login-error');
+    const chatContainer = document.getElementById('chat-container');
+    const loginContainer = document.getElementById('login-container');
 
     const form = document.getElementById('form');
     const input = document.getElementById('input');
     const messages = document.getElementById('messages');
     const toggleButton = document.getElementById('toggle-btn');
 
-    form.addEventListener('submit', (e) => {
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const username = usernameInput.value.trim().toLowerCase();
+        if (!username) return;
+
+        socket = io({
+            auth: {
+                serverOffset: 0,
+                username: username
+            },
+            ackTimeout: 10000,
+            retries: 3,
+        });
+
+        socket.username = username;
+
+        socket.on("connect_error", (err) => {
+            if (err.message === "Username is taken") {
+                loginError.textContent = "Username is taken, try a different one.";
+                socket.disconnect();
+            }
+        });
+
+        socket.on("connect", () => {
+            loginError.textContent = "";
+            loginContainer.style.display = "none";
+            chatContainer.style.display = "block";
+        });
+
+        socket.on("chat message", (msg, serverOffset, clientOffset, senderUsername) => {
+            const item = document.createElement("li");
+            item.textContent = `${senderUsername}: ${msg}`;
+            if (senderUsername === socket.username) item.classList.add("sent");
+            else item.classList.add("received");
+
+            messages.appendChild(item);
+            window.scrollTo(0, document.body.scrollHeight);
+            socket.auth.serverOffset = serverOffset;
+        });
+    });
+
+    form.addEventListener("submit", (e) => {
         e.preventDefault();
         if (input.value) {
-
             const clientOffset = `${socket.id}-${counter++}`;
             sentMessages.add(clientOffset);
-            socket.emit('chat message', input.value, clientOffset);
-            input.value = '';
+            socket.emit("chat message", input.value, clientOffset);
+            input.value = "";
         }
     });
 
-
-    socket.on('chat message', (msg, serverOffset, clientOffset, senderUsername) => {
-        const item = document.createElement('li');
-        item.textContent = `${senderUsername}: ${msg}`;
-
-        if (senderUsername === socket.username) {
-            item.classList.add('sent');
-        } else {
-            item.classList.add('received');
-        }
-
-        messages.appendChild(item);
-        window.scrollTo(0, document.body.scrollHeight);
-        socket.auth.serverOffset = serverOffset;
-    });
-
-
-    toggleButton.addEventListener('click', (e) => {
+    toggleButton.addEventListener("click", (e) => {
         e.preventDefault();
         if (socket.connected) {
-            toggleButton.innerText = 'Connect';
+            toggleButton.innerText = "Connect";
             socket.disconnect();
         } else {
-            toggleButton.innerText = 'Disconnect';
+            toggleButton.innerText = "Disconnect";
             socket.connect();
         }
-    })
-
+    });
 </script>
 
 </html>
