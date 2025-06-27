@@ -10,8 +10,8 @@ import mongoose from 'mongoose';
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server , {
-    connectionStateRecovery : {}
+const io = new Server(server, {
+    connectionStateRecovery: {}
 });
 
 const PORT = process.env.PORT || 3000;
@@ -27,53 +27,65 @@ app.get('/', (req, res) => {
 
 
 
-io.on('connection', async(socket) => {
+io.on('connection', async (socket) => {
 
-  socket.on('chat message', async (msg , clientOffset , callback) => {
+     const username = socket.handshake.auth.username;
+     
+    socket.on('chat message', async (msg, clientOffset, callback) => {
 
-    let result;
-    try {
-   
-      result = await Message.create({
-        content : msg,
-        client_offset : clientOffset
-      })
+        let result;
+        try {
 
-      
-    } catch (e) {
-      if(e.code ===11000){
-        callback();
-      }
-      else{
-        console.log("Message insertion failed! " , e);
-      }
-      return;
+            result = await Message.create({
+                content: msg,
+                client_offset: clientOffset,
+                senderUsername: username
+            })
+
+
+        } catch (e) {
+            if (e.code === 11000) {
+                if (typeof callback === 'function') {
+
+                    callback();
+
+                }
+
+            }
+            else {
+                console.log("Message insertion failed! ", e);
+            }
+            return;
+        }
+
+        io.emit('chat message', msg, result._id.toString(), clientOffset, username);
+
+        if (typeof callback === 'function') {
+
+            callback();
+
+        }
+    });
+
+
+    if (!socket.recovered) {
+        try {
+            const serverOffset = socket.handshake.auth.serverOffset || null;
+
+            const query = serverOffset
+                ? { _id: { $gt: serverOffset } }
+                : {};
+
+            const missedMessages = await Message.find(query).sort({ _id: 1 });
+
+            for (const msg of missedMessages) {
+                socket.emit('chat message', msg.content, msg._id.toString(), msg.client_offset, msg.senderUsername);
+            }
+
+        } catch (e) {
+            console.error('Error recovering missed messages', e);
+        }
     }
-
-    io.emit('chat message', msg, result._id.toString() , clientOffset);
-
-    callback();
-  });
-
-
-  if (!socket.recovered) {
-  try {
-    const serverOffset = socket.handshake.auth.serverOffset || null;
-
-    const query = serverOffset
-      ? { _id: { $gt: serverOffset } }
-      : {};
-
-    const missedMessages = await Message.find(query).sort({ _id: 1 });
-
-    for (const msg of missedMessages) {
-      socket.emit('chat message', msg.content, msg._id.toString());
-    }
-
-  } catch (e) {
-    console.error('Error recovering missed messages', e);
-  }
-}
 
 });
 

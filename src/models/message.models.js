@@ -10,6 +10,10 @@ const messageSchema = new Schema({
         type: String,
         required : true,
         unique: true
+    },
+    senderUsername : {
+        type: String,
+        required : true
     }
 
 },

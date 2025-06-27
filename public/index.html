@@ -92,14 +92,19 @@
     let counter = 0;
     const sentMessages = new Set();
 
+    const username = prompt("Enter your name:").trim().toLowerCase();
+
     const socket = io({
         auth: {
-            serverOffset: 0
+            serverOffset: 0,
+            username: username
         },
         ackTimeout: 10000,
         retries: 3,
 
     });
+
+    socket.username = username;
 
     const form = document.getElementById('form');
     const input = document.getElementById('input');
@@ -118,11 +123,11 @@
     });
 
 
-    socket.on('chat message', (msg, serverOffset, clientOffset) => {
+    socket.on('chat message', (msg, serverOffset, clientOffset, senderUsername) => {
         const item = document.createElement('li');
-        item.textContent = msg;
+        item.textContent = `${senderUsername}: ${msg}`;
 
-        if (sentMessages.has(clientOffset)) {
+        if (senderUsername === socket.username) {
             item.classList.add('sent');
         } else {
             item.classList.add('received');
@@ -140,7 +145,7 @@
             toggleButton.innerText = 'Connect';
             socket.disconnect();
         } else {
-            toggleButton.innerTEXT = 'Disconnect';
+            toggleButton.innerText = 'Disconnect';
             socket.connect();
         }
     })
