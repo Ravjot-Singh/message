@@ -11,7 +11,7 @@ const messageSchema = new Schema({
         required : true,
         unique: true
     },
-    senderUsername : {
+    senderUsername:{
         type: String,
         required : true
     }
