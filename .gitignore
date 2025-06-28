@@ -1,14 +1,2 @@
 node_modules
 .env
-
- /* if (senderId && sentMessages.has(clientOffset)) {            // logic if the sender id was used to store the messages
-             item.classList.add('sent');
-         } else {
-             item.classList.add('received');
-         }*/
-
-          <ul id="messages"></ul>
-    <form id="form" action="">
-        <input id="input" autocomplete="off" /><button>Send</button>
-        <button id="toggle-btn">Disconnect</button>
-    </form>
