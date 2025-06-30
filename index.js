@@ -40,24 +40,62 @@ io.use((socket, next) => {
 })
 
 
+
+
+
 app.get('/', (req, res) => {
-     if (!req.session?.user) {
-    return res.redirect('/login');
-  }
+    if (req.session?.user) {
+        return res.redirect('/index');
+    }
+    return res.sendFile(join(__dirname, 'public/login.html'));
 });
 
-app.get('/index', (req, res) => {
-  if (!req.session?.user) return res.redirect('/login');
-  res.sendFile(join(__dirname, 'public/index.html'));
-});
-
+// Explicit login route (optional, same as '/')
 app.get('/login', (req, res) => {
-  res.sendFile(join(__dirname, 'public/login.html'));
+    if (req.session?.user) {
+        return res.redirect('/index');
+    }
+    res.sendFile(join(__dirname, 'public/login.html'));
 });
 
-app.get('/register', (req, res) =>
-  res.sendFile(join(__dirname, 'public/register.html'))
-);
+// Registration page
+app.get('/register', (req, res) => {
+    if (req.session?.user) {
+        return res.redirect('/index');
+    }
+    res.sendFile(join(__dirname, 'public/register.html'));
+});
+
+// Main chat page
+app.get('/index', (req, res) => {
+    if (!req.session?.user) {
+        return res.redirect('/login');
+    }
+    res.sendFile(join(__dirname, 'public/index.html'));
+});
+
+// DM page
+app.get('/dm/:username', (req, res) => {
+    if (!req.session?.user) {
+        return res.redirect('/login');
+    }
+    res.sendFile(join(__dirname, 'public/dm.html'));
+});
+
+// Get users list (except current user)
+app.get('/users', async (req, res) => {
+    if (!req.session?.user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const users = await User.find({
+        username: { $ne: req.session.user.username }
+    }).select('username');
+
+    res.json(users);
+});
+
+
 
 
 app.post('/register', async (req, res) => {
@@ -104,6 +142,7 @@ app.post('/logout', (req, res) => {
 
 
 
+const userSockets = new Map();
 
 
 io.on('connection', async (socket) => {
@@ -113,9 +152,94 @@ io.on('connection', async (socket) => {
         return;
     }
 
+
+    async function recoverMessages(socket, lastMessageId) {
+        try {
+            const username = socket.data.username;
+
+            const query = lastMessageId
+                ? { _id: { $gt: lastMessageId } }
+                : {};
+
+            const missedMessages = await Message.find(query).sort({ createdAt: 1 });
+
+            for (const msg of missedMessages) {
+                // DM case: Only send to involved parties
+                if (msg.recipientUsername) {
+                    if ([msg.senderUsername, msg.recipientUsername].includes(username)) {
+                        socket.emit('private message', {
+                            _id: msg._id.toString(),
+                            content: msg.content,
+                            from: msg.senderUsername,
+                            to: msg.recipientUsername,
+                            clientOffset: msg.client_offset,
+                        });
+                    }
+                } else {
+                    // Public message
+                    socket.emit('chat message', msg.content, msg._id.toString(), msg.client_offset, msg.senderUsername);
+                }
+            }
+        } catch (err) {
+            console.error('Error recovering messages:', err);
+        }
+    }
+
+
+
+
     const userId = session.user._id;
     const username = session.user.username;
     socket.data.username = username;
+    userSockets.set(username, socket);
+
+
+
+
+
+    socket.on('private message', async (msg, toUsername, clientOffset, callback) => {
+        try {
+
+
+            const recipientSocket = userSockets.get(toUsername);
+
+            const messageDoc = await Message.create({
+                content: msg,
+                client_offset: clientOffset,
+                senderUsername: username,
+                recipientUsername: toUsername
+            })
+
+            await User.updateMany(
+                { username: { $in: [username, toUsername] } },
+                { $push: { messages: messageDoc._id } }
+            )
+
+            const messagePayLoad = {
+                _id: messageDoc._id.toString(),
+                content: msg,
+                from: username,
+                to: toUsername,
+                clientOffset
+            };
+
+            socket.emit('private message', messagePayLoad);
+
+            if (recipientSocket) {
+                recipientSocket.emit('private message', messagePayLoad);
+            }
+
+            callback?.();
+
+        } catch (error) {
+            if (error.code === 11000) {
+                callback?.();
+            } else {
+                console.log('DM save error : ', error);
+            }
+        }
+
+    });
 
 
     socket.on('chat message', async (msg, clientOffset, callback) => {
@@ -123,7 +247,7 @@ io.on('connection', async (socket) => {
             const message = await Message.create({
                 content: msg,
                 client_offset: clientOffset,
-                senderUsername : username
+                senderUsername: username
             });
 
             await User.findByIdAndUpdate(userId, {
@@ -134,7 +258,7 @@ io.on('connection', async (socket) => {
             if (typeof callback === 'function') callback();
         } catch (err) {
             if (err.code === 11000 && typeof callback === 'function') {
-                callback(); // duplicate offset
+                callback();
             } else {
                 console.error("Message save error:", err);
             }
@@ -142,19 +266,10 @@ io.on('connection', async (socket) => {
     });
 
     if (!socket.recovered) {
-        try {
-            const serverOffset = socket.handshake.auth.serverOffset || null;
 
-            const query = serverOffset ? { _id: { $gt: serverOffset } } : {};
+        const serverOffset = socket.handshake.auth.serverOffset || null;
+        await recoverMessages(socket, serverOffset);
 
-            const missedMessages = await Message.find(query).sort({ createdAt: 1 });
-
-            for (const msg of missedMessages) {
-                socket.emit('chat message', msg.content, msg._id.toString(), msg.client_offset, msg.senderUsername);
-            }
-        } catch (e) {
-            console.error('Error recovering missed messages', e);
-        }
     }
 });
 
