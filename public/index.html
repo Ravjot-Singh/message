@@ -8,47 +8,77 @@
 </head>
 
 <body>
-    <div id="chat-container">
-        <ul id="messages-chat"></ul>
-        <form id="form-chat" action="">
-            <input id="input-chat" autocomplete="off" />
-            <button>Send</button>
-            <button id="toggle-btn">Disconnect</button>
-        </form>
+    <div id="main-container">
+
+        <div id="sidebar">
+            <h2>Users</h2>
+            <div id="user-list"></div>
+        </div>
+
+
+        <div id="chat-container">
+            <ul id="messages-chat"></ul>
+            <form id="form-chat" action="">
+                <input id="input-chat" autocomplete="off" />
+                <button>Send</button>
+                <button id="toggle-btn" type="button">Disconnect</button>
+            </form>
+        </div>
     </div>
 
 
     <script src="/socket.io/socket.io.js"></script>
+
+
     <script>
         let counter = 0;
         const sentMessages = new Set();
         let socket;
         let serverOffset = null;
 
-        window.addEventListener('load', () => {
-            socket = io({
-                auth: { serverOffset },
-                ackTimeout: 10000,
-                retries: 3,
-            });
+        window.addEventListener('load', async () => {
+            try {
+                const sidebar = document.getElementById('sidebar');
+                const res = await fetch('/users');
+                if (!res.ok) throw new Error("Not authenticated");
+                const users = await res.json();
 
-            socket.on('connect_error', (err) => {
-                alert(err.message);
-                window.location.href = '/login.html';
-            });
+                users.forEach(user => {
+                    const userItem = document.createElement('div');
+                    userItem.textContent = user.username;
+                    userItem.style.cursor = 'pointer';
+                    userItem.onclick = () => {
+                        window.location.href = `/dm/${user.username}`;
+                    };
+                    sidebar.appendChild(userItem);
+                });
 
-            socket.on('chat message', (msg, msgId, clientOffset, senderUsername) => {
-                const item = document.createElement("li");
-                item.textContent = `${senderUsername}: ${msg}`;
-                if (senderUsername === socket.data?.username) {
-                    item.classList.add("sent");
-                } else {
-                    item.classList.add("received");
-                }
-                messages.appendChild(item);
-                serverOffset = msgId;
-                socket.auth.serverOffset = serverOffset;
-            });
+                socket = io({
+                    auth: { serverOffset },
+                    ackTimeout: 10000,
+                    retries: 3
+                });
+
+                socket.on('connect_error', (err) => {
+                    console.error("Connection error:", err.message);
+                    window.location.href = '/login';
+                });
+
+                socket.on('chat message', (msg, msgId, clientOffset, senderUsername) => {
+                    const messages = document.getElementById('messages-chat');
+                    const item = document.createElement("li");
+                    item.textContent = `${senderUsername}: ${msg}`;
+                    item.classList.add(senderUsername === socket.data?.username ? 'sent' : 'received');
+                    messages.appendChild(item);
+
+                    serverOffset = msgId;
+                    socket.auth.serverOffset = serverOffset;
+                });
+
+            } catch (err) {
+                console.error(err);
+                window.location.href = '/login';
+            }
         });
 
         const form = document.getElementById('form-chat');
@@ -58,17 +88,19 @@
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value) {
-                const clientOffset = `${socket.id}-${counter++}`;
-                sentMessages.add(clientOffset);
-                socket.emit('chat message', input.value, clientOffset , (ack)=>{
-                    console.log("Message ack : " , ack);
-                });
-                input.value = '';
-            }
+            const message = input.value.trim();
+            if (!message || !socket?.connected) return;
+
+            const clientOffset = `${socket.id}-${counter++}`;
+            sentMessages.add(clientOffset);
+            socket.emit('chat message', message, clientOffset, (ack) => {
+                console.log("Message ack:", ack);
+            });
+            input.value = '';
         });
 
         toggleButton.addEventListener('click', () => {
+            if (!socket) return;
             if (socket.connected) {
                 socket.disconnect();
                 toggleButton.textContent = "Connect";
@@ -78,6 +110,8 @@
             }
         });
     </script>
+
+
 </body>
 
 </html>
