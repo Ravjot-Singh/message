@@ -22,6 +22,21 @@ const messageSchema = new Schema({
         type: Boolean,
         default: false
     },
+    filename:
+    {
+        type: String
+
+    },
+    fileType: {
+
+        type: String
+
+    },
+    isFile:
+    {
+        type: Boolean,
+        default: false
+    },
 
 },
     { timestamps: true }

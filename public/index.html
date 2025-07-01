@@ -20,6 +20,7 @@
             <ul id="messages-chat"></ul>
             <form id="form-chat" action="">
                 <input id="input-chat" autocomplete="off" />
+                <input id="input-file" type="file">
                 <button>Send</button>
                 <button id="logout-btn" type="button">Logout</button>
             </form>
@@ -75,6 +76,25 @@
                     socket.auth.serverOffset = serverOffset;
                 });
 
+                socket.on('chat file', (data) => {
+                    const item = document.createElement('li');
+                    item.classList.add(data.from === socket.data?.username ? 'sent' : 'received');
+
+                    const label = document.createElement('p');
+                    label.textContent = `${data.from}:`;
+
+                    const link = document.createElement('a');
+                    link.href = data.content;
+                    link.download = data.filename;
+                    link.textContent = `Download ${data.filename}`;
+                    link.target = '_blank';
+
+                    item.appendChild(label);
+                    item.appendChild(link);
+                    messages.appendChild(item); 
+                });
+
+
             } catch (err) {
                 console.error(err);
                 window.location.href = '/login';
@@ -86,33 +106,57 @@
         const messages = document.getElementById('messages-chat');
         const logoutButton = document.getElementById('logout-btn');
 
+
         form.addEventListener('submit', (e) => {
             e.preventDefault();
+
             const message = input.value.trim();
-            if (!message || !socket?.connected) return;
+            const file = document.getElementById('input-file').files[0];
+
+            if (!message && !file) return;
 
             const clientOffset = `${socket.id}-${counter++}`;
-            sentMessages.add(clientOffset);
-            socket.emit('chat message', message, clientOffset, (ack) => {
-                console.log("Message ack:", ack);
-            });
-            input.value = '';
+
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    socket.emit('chat file', {
+                        filename: file.name,
+                        content: reader.result,
+                        type: file.type,
+                        clientOffset
+                    }, () => {
+                        input.value = '';
+                        document.getElementById('input-file').value = '';
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+
+            if (message) {
+                sentMessages.add(clientOffset);
+                socket.emit('chat message', message, clientOffset, (ack) => {
+                    console.log("Message ack:", ack);
+                    input.value = '';
+                });
+            }
         });
 
-        logoutButton.addEventListener('click' , async()=>{
-            try{
+
+        logoutButton.addEventListener('click', async () => {
+            try {
                 const res = await fetch('/logout', {
-                    method : 'POST',
-                    credentials : 'include',
+                    method: 'POST',
+                    credentials: 'include',
                 });
 
-                if (res.ok){
-                    window.location.href ='/login';
-                }else{
+                if (res.ok) {
+                    window.location.href = '/login';
+                } else {
                     alert('Logout failed.');
                 }
-            }catch(error){
-                console.log("Logout error : " , error);
+            } catch (error) {
+                console.log("Logout error : ", error);
                 alert("Error logging out. Please try again.");
             }
         })

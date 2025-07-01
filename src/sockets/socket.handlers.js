@@ -41,6 +41,50 @@ export default function setupSocketHandlers(io) {
       }
     }
 
+    socket.on('chat file', async (data, callback) => {
+      const { filename, content, type, clientOffset } = data;
+      const from = socket.data.username;
+
+      try {
+        const fileMessage = await Message.create({
+          content,             // base64 string
+          filename,
+          fileType: type,
+          client_offset: clientOffset,
+          senderUsername: from,
+          isFile: true
+        });
+
+        // Save to sender’s message list
+        await User.findOneAndUpdate(
+          { username: from },
+          { $push: { messages: fileMessage._id } }
+        );
+
+        const payload = {
+          _id: fileMessage._id.toString(),
+          from,
+          filename,
+          content,
+          type,
+          clientOffset,
+          isFile: true
+        };
+
+        io.emit('chat file', payload); // Broadcast to all connected clients
+        callback?.();
+
+      } catch (err) {
+        console.error("General file upload error:", err);
+        if (err.code !== 11000) {
+          callback?.({ error: 'Upload failed' });
+        } else {
+          callback?.();
+        }
+      }
+    });
+
+
 
     // for DMs
 
@@ -76,6 +120,59 @@ export default function setupSocketHandlers(io) {
         else console.error('DM error:', err);
       }
     });
+
+    socket.on('private file', async (data, callback) => {
+      const { to, filename, content, type, clientOffset } = data;
+
+      const from = socket.data.username;
+
+      try {
+        const fileMessage = await Message.create({
+          content,
+          filename,
+          fileType: type,
+          client_offset: clientOffset,
+          senderUsername: from,
+          recipientUsername: to,
+          isFile: true
+        });
+
+        await User.updateMany(
+          { username: { $in: [from, to] } },
+          { $push: { messages: fileMessage._id } }
+        );
+
+        const payload = {
+          _id: fileMessage._id.toString(),
+          from,
+          to,
+          filename,
+          content,
+          type,
+          clientOffset,
+          isFile: true
+        };
+
+        socket.emit('private file', payload);
+
+        const recipientSocket = userSockets.get(to);
+        if (recipientSocket) {
+          recipientSocket.emit('private file', payload);
+        }
+
+        callback?.();
+
+      } catch (error) {
+        console.error("Private file upload error:", err);
+        if (err.code !== 11000) {
+          callback?.({ error: 'Upload failed' });
+        } else {
+          callback?.();
+        }
+      }
+
+
+    })
 
 
 
@@ -113,7 +210,7 @@ export default function setupSocketHandlers(io) {
         message.content = newContent;
         message.edited = true;
 
-       await message.save();
+        await message.save();
 
         io.emit('message edited', {
           messageId,
@@ -130,22 +227,22 @@ export default function setupSocketHandlers(io) {
 
 
 
-    socket.on('delete message' , async(messageId , callback)=>{
+    socket.on('delete message', async (messageId, callback) => {
 
-      try{
+      try {
         const message = await Message.findById(messageId);
 
-        if(!message || message.senderUsername !== socket.data.username){
+        if (!message || message.senderUsername !== socket.data.username) {
           return callback?.('Not authorized to delete it');
         }
 
         await message.deleteOne();
 
-        io.emit('message deleted' , messageId);
+        io.emit('message deleted', messageId);
 
-        callback?.({success : true});
+        callback?.({ success: true });
 
-      }catch(error){
+      } catch (error) {
         return callback?.('Unable to delete the message')
       }
 
