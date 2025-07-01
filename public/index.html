@@ -21,7 +21,7 @@
             <form id="form-chat" action="">
                 <input id="input-chat" autocomplete="off" />
                 <button>Send</button>
-                <button id="toggle-btn" type="button">Disconnect</button>
+                <button id="logout-btn" type="button">Logout</button>
             </form>
         </div>
     </div>
@@ -84,7 +84,7 @@
         const form = document.getElementById('form-chat');
         const input = document.getElementById('input-chat');
         const messages = document.getElementById('messages-chat');
-        const toggleButton = document.getElementById('toggle-btn');
+        const logoutButton = document.getElementById('logout-btn');
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -99,16 +99,23 @@
             input.value = '';
         });
 
-        toggleButton.addEventListener('click', () => {
-            if (!socket) return;
-            if (socket.connected) {
-                socket.disconnect();
-                toggleButton.textContent = "Connect";
-            } else {
-                socket.connect();
-                toggleButton.textContent = "Disconnect";
+        logoutButton.addEventListener('click' , async()=>{
+            try{
+                const res = await fetch('/logout', {
+                    method : 'POST',
+                    credentials : 'include',
+                });
+
+                if (res.ok){
+                    window.location.href ='/login';
+                }else{
+                    alert('Logout failed.');
+                }
+            }catch(error){
+                console.log("Logout error : " , error);
+                alert("Error logging out. Please try again.");
             }
-        });
+        })
     </script>
 
 

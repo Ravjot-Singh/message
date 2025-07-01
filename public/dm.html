@@ -20,7 +20,9 @@
     <script src="/socket.io/socket.io.js"></script>
 
 
-    <script>
+    <script type="module">
+
+    
         let serverOffset = null;
         let counter = 0;
 
@@ -53,6 +55,8 @@
         });
 
         socket.on('private message', (data) => {
+            if (data.from !== toUsername && data.to !== toUsername) return;
+
             const item = document.createElement('li');
             item.textContent = `${data.from}: ${data.content}`;
             item.classList.add(data.from === socket.data?.username ? 'sent' : 'received');

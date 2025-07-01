@@ -6,21 +6,25 @@ const messageSchema = new Schema({
         type: String,
         required: true
     },
-    client_offset:{
+    client_offset: {
         type: String,
-        required : true,
+        required: true,
         unique: true
     },
-    senderUsername:{
+    senderUsername: {
         type: String,
-        required : true
+        required: true
     },
-    recipientUsername : {
-        type : String
+    recipientUsername: {
+        type: String
+    },
+    edited: {
+        type: Boolean,
+        default: false
     },
 
 },
     { timestamps: true }
 )
 
-export const Message = mongoose.model("Message" , messageSchema);
+export const Message = mongoose.model("Message", messageSchema);
