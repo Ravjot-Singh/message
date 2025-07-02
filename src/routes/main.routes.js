@@ -3,12 +3,17 @@ import { join } from 'path';
 import bcrypt from 'bcrypt';
 import { User } from '../models/user.models.js';
 
+
 const router = Router();
+
+
 
 router.get('/', (req, res) => {
   if (req.session?.user) return res.redirect('/index');
   res.sendFile(join(process.cwd(), 'public/login.html'));
 });
+
+
 
 router.get('/login', (req, res) => {
   if (req.session?.user) return res.redirect('/index');
@@ -62,6 +67,9 @@ router.post('/login', async (req, res) => {
 router.post('/logout', (req, res) => {
   req.session.destroy(() => res.send('Logged out'));
 });
+
+
+
 
 export default function setupRoutes(app) {
   app.use('/', router);

@@ -37,6 +37,21 @@
         let socket;
         let serverOffset = null;
 
+        async function uploadFile(file, chatType) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('chatType', chatType);
+
+            const res = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!res.ok) throw new Error('Upload failed');
+            return await res.json();
+        }
+
+
         window.addEventListener('load', async () => {
             try {
                 const sidebar = document.getElementById('sidebar');
@@ -76,6 +91,7 @@
                     socket.auth.serverOffset = serverOffset;
                 });
 
+
                 socket.on('chat file', (data) => {
                     const item = document.createElement('li');
                     item.classList.add(data.from === socket.data?.username ? 'sent' : 'received');
@@ -83,16 +99,32 @@
                     const label = document.createElement('p');
                     label.textContent = `${data.from}:`;
 
-                    const link = document.createElement('a');
-                    link.href = data.content;
-                    link.download = data.filename;
-                    link.textContent = `Download ${data.filename}`;
-                    link.target = '_blank';
-
                     item.appendChild(label);
-                    item.appendChild(link);
-                    messages.appendChild(item); 
+
+                    if (data.type.startsWith('image/')) {
+                        const img = document.createElement('img');
+                        img.src = data.fileURL;
+                        img.alt = data.filename;
+                        img.style.maxWidth = '200px';
+                        item.appendChild(img);
+                    } else if (data.type.startsWith('video/')) {
+                        const video = document.createElement('video');
+                        video.src = data.fileURL;
+                        video.controls = true;
+                        video.style.maxWidth = '250px';
+                        item.appendChild(video);
+                    } else {
+                        const link = document.createElement('a');
+                        link.href = data.fileURL;
+                        link.download = data.filename;
+                        link.textContent = `Download ${data.filename}`;
+                        link.target = '_blank';
+                        item.appendChild(link);
+                    }
+
+                    messages.appendChild(item);
                 });
+
 
 
             } catch (err) {
@@ -106,32 +138,28 @@
         const messages = document.getElementById('messages-chat');
         const logoutButton = document.getElementById('logout-btn');
 
-
         form.addEventListener('submit', (e) => {
             e.preventDefault();
 
             const message = input.value.trim();
             const file = document.getElementById('input-file').files[0];
-
             if (!message && !file) return;
 
             const clientOffset = `${socket.id}-${counter++}`;
 
             if (file) {
-                const reader = new FileReader();
-                reader.onload = () => {
+                uploadFile(file, 'general').then(data => {
                     socket.emit('chat file', {
-                        filename: file.name,
-                        content: reader.result,
-                        type: file.type,
+                        filename: data.filename,
+                        type: data.type,
+                        fileURL: data.fileURL,
                         clientOffset
-                    }, () => {
-                        input.value = '';
-                        document.getElementById('input-file').value = '';
                     });
-                };
-                reader.readAsDataURL(file);
+
+                    document.getElementById('input-file').value = '';
+                }).catch(console.error);
             }
+            
 
             if (message) {
                 sentMessages.add(clientOffset);
@@ -141,7 +169,6 @@
                 });
             }
         });
-
 
         logoutButton.addEventListener('click', async () => {
             try {
@@ -159,7 +186,7 @@
                 console.log("Logout error : ", error);
                 alert("Error logging out. Please try again.");
             }
-        })
+        });
     </script>
 
 

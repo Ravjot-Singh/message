@@ -21,9 +21,7 @@
     <script src="/socket.io/socket.io.js"></script>
 
 
-    <script type="module">
-
-
+    <script>
         let serverOffset = null;
         let counter = 0;
 
@@ -33,10 +31,23 @@
             retries: 3
         });
 
+        async function uploadFile(file, chatType) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('chatType', chatType);
+
+            const res = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!res.ok) throw new Error('Upload failed');
+            return await res.json();
+        }
+
         const messagesEl = document.getElementById('dm-messages');
         const form = document.getElementById('dm-form');
         const input = document.getElementById('dm-input');
-
         const toUsername = decodeURIComponent(window.location.pathname.split('/dm/')[1]);
 
         form.addEventListener('submit', (e) => {
@@ -49,19 +60,16 @@
             const clientOffset = `${socket.id}-${counter++}`;
 
             if (file) {
-                const reader = new FileReader();
-                reader.onload = () => {
+                uploadFile(file, 'private').then(data => {
                     socket.emit('private file', {
                         to: toUsername,
-                        filename: file.name,
-                        content: reader.result,
-                        type: file.type,
+                        filename: data.filename,
+                        type: data.type,
+                        fileURL: data.fileURL,
                         clientOffset
-                    }, () => {
-                        document.getElementById('input-file').value = '';
                     });
-                };
-                reader.readAsDataURL(file);
+                    document.getElementById('input-file').value = ''; 
+                }).catch(console.error);
             }
 
             if (message) {
@@ -70,7 +78,6 @@
                 });
             }
         });
-
 
         socket.on('connect_error', (err) => {
             console.error("Connection error:", err.message);
@@ -97,19 +104,31 @@
 
             const label = document.createElement('p');
             label.textContent = `${data.from}:`;
-
-            const link = document.createElement('a');
-            link.href = data.content;
-            link.download = data.filename;
-            link.textContent = `Download ${data.filename}`;
-            link.target = '_blank';
-
             item.appendChild(label);
-            item.appendChild(link);
+
+            if (data.type.startsWith('image/')) {
+                const img = document.createElement('img');
+                img.src = data.fileURL;
+                img.alt = data.filename;
+                img.style.maxWidth = '200px';
+                item.appendChild(img);
+            } else if (data.type.startsWith('video/')) {
+                const video = document.createElement('video');
+                video.src = data.fileURL;
+                video.controls = true;
+                video.style.maxWidth = '250px';
+                item.appendChild(video);
+            } else {
+                const link = document.createElement('a');
+                link.href = data.fileURL;
+                link.download = data.filename;
+                link.textContent = `Download ${data.filename}`;
+                link.target = '_blank';
+                item.appendChild(link);
+            }
+
             messagesEl.appendChild(item);
         });
-
-
     </script>
 
 

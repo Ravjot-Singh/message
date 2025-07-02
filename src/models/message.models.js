@@ -4,7 +4,9 @@ const messageSchema = new Schema({
 
     content: {
         type: String,
-        required: true
+        required: function (){
+            return !this.isFile;
+        }
     },
     client_offset: {
         type: String,

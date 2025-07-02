@@ -22,8 +22,36 @@ export default function setupSocketHandlers(io) {
         const missedMessages = await Message.find(query).sort({ createdAt: 1 });
 
         for (const msg of missedMessages) {
+          // If the message is a FILE
+          if (msg.isFile) {
+            const payload = {
+              _id: msg._id.toString(),
+              from: msg.senderUsername,
+              to: msg.recipientUsername,
+              filename: msg.filename,
+              type: msg.fileType,
+              fileURL: `/uploads/${msg.recipientUsername ? 'private' : 'general'}/${msg.filename}`,
+              clientOffset: msg.client_offset,
+              isFile: true
+            };
+
+            if (msg.recipientUsername) {
+              // PRIVATE file - send only to sender/recipient
+              if ([msg.senderUsername, msg.recipientUsername].includes(socket.data.username)) {
+                socket.emit('private file', payload);
+              }
+            } else {
+              // GENERAL file - broadcast to everyone
+              socket.emit('chat file', payload);
+            }
+
+            continue; // Skip to next message (don't process further)
+          }
+
+          // If the message is a TEXT (not a file)
           if (msg.recipientUsername) {
-            if ([msg.senderUsername, msg.recipientUsername].includes(username)) {
+            // Private text message
+            if ([msg.senderUsername, msg.recipientUsername].includes(socket.data.username)) {
               socket.emit('private message', {
                 _id: msg._id.toString(),
                 content: msg.content,
@@ -33,6 +61,7 @@ export default function setupSocketHandlers(io) {
               });
             }
           } else {
+            // General text message
             socket.emit('chat message', msg.content, msg._id.toString(), msg.client_offset, msg.senderUsername);
           }
         }
@@ -40,49 +69,6 @@ export default function setupSocketHandlers(io) {
         console.error('Error recovering messages:', err);
       }
     }
-
-    socket.on('chat file', async (data, callback) => {
-      const { filename, content, type, clientOffset } = data;
-      const from = socket.data.username;
-
-      try {
-        const fileMessage = await Message.create({
-          content,             // base64 string
-          filename,
-          fileType: type,
-          client_offset: clientOffset,
-          senderUsername: from,
-          isFile: true
-        });
-
-        // Save to sender’s message list
-        await User.findOneAndUpdate(
-          { username: from },
-          { $push: { messages: fileMessage._id } }
-        );
-
-        const payload = {
-          _id: fileMessage._id.toString(),
-          from,
-          filename,
-          content,
-          type,
-          clientOffset,
-          isFile: true
-        };
-
-        io.emit('chat file', payload); // Broadcast to all connected clients
-        callback?.();
-
-      } catch (err) {
-        console.error("General file upload error:", err);
-        if (err.code !== 11000) {
-          callback?.({ error: 'Upload failed' });
-        } else {
-          callback?.();
-        }
-      }
-    });
 
 
 
@@ -121,58 +107,46 @@ export default function setupSocketHandlers(io) {
       }
     });
 
-    socket.on('private file', async (data, callback) => {
-      const { to, filename, content, type, clientOffset } = data;
 
+    socket.on('private file', async (data, callback) => {
+      const { to, filename, type, fileURL, clientOffset } = data;
       const from = socket.data.username;
 
-      try {
-        const fileMessage = await Message.create({
-          content,
-          filename,
-          fileType: type,
-          client_offset: clientOffset,
-          senderUsername: from,
-          recipientUsername: to,
-          isFile: true
-        });
+      const fileMessage = await Message.create({
+        filename,
+        fileType: type,
+        client_offset: clientOffset,
+        senderUsername: from,
+        recipientUsername: to,
+        isFile: true
+      });
 
-        await User.updateMany(
-          { username: { $in: [from, to] } },
-          { $push: { messages: fileMessage._id } }
-        );
+      await User.updateMany(
+        { username: { $in: [from, to] } },
+        { $push: { messages: fileMessage._id } }
+      );
 
-        const payload = {
-          _id: fileMessage._id.toString(),
-          from,
-          to,
-          filename,
-          content,
-          type,
-          clientOffset,
-          isFile: true
-        };
+      const payload = {
+        _id: fileMessage._id.toString(),
+        from,
+        to,
+        filename,
+        type,
+        fileURL,
+        clientOffset,
+        isFile: true
+      };
 
-        socket.emit('private file', payload);
-
-        const recipientSocket = userSockets.get(to);
-        if (recipientSocket) {
-          recipientSocket.emit('private file', payload);
-        }
-
-        callback?.();
-
-      } catch (error) {
-        console.error("Private file upload error:", err);
-        if (err.code !== 11000) {
-          callback?.({ error: 'Upload failed' });
-        } else {
-          callback?.();
-        }
+      socket.emit('private file', payload);
+      const recipientSocket = userSockets.get(to);
+      if (recipientSocket) {
+        recipientSocket.emit('private file', payload);
       }
 
+      callback?.();
+    });
 
-    })
+
 
 
 
@@ -195,6 +169,35 @@ export default function setupSocketHandlers(io) {
         else console.error('Chat save error:', err);
       }
     });
+
+
+    socket.on('chat file', async (data, callback) => {
+      const { filename, type, fileURL, clientOffset } = data;
+      const from = socket.data.username;
+
+      const fileMessage = await Message.create({
+        filename,
+        fileType: type,
+        client_offset: clientOffset,
+        senderUsername: from,
+        isFile: true
+      });
+
+      await User.updateOne({ username: from }, { $push: { messages: fileMessage._id } });
+
+      io.emit('chat file', {
+        _id: fileMessage._id.toString(),
+        from,
+        filename,
+        type,
+        fileURL,
+        clientOffset,
+        isFile: true
+      });
+
+      callback?.();
+    });
+
 
 
 

@@ -9,6 +9,8 @@ import cookieParser from 'cookie-parser';
 import { sessionMiddleware } from './src/middlewares/session.middlewares.js';
 import setupRoutes from './src/routes/main.routes.js';
 import setupSocketHandlers from './src/sockets/socket.handlers.js';
+import path from 'path';
+import uploadRoutes from './src/routes/upload.routes.js'
 
 const app = express();
 const server = createServer(app);
@@ -34,6 +36,10 @@ io.use((socket, next) => {
 
 // Routes
 setupRoutes(app);
+
+app.use('/uploads', express.static(path.join(__dirname, 'src', 'uploads')));
+
+app.use('/upload', uploadRoutes );
 
 // Sockets
 setupSocketHandlers(io);
