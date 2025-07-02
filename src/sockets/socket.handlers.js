@@ -5,7 +5,10 @@ const userSockets = new Map();
 
 export default function setupSocketHandlers(io) {
   io.on('connection', async (socket) => {
-    const session = socket.request.session;
+   
+
+    const session = socket.handshake.session;
+
     if (!session?.user) {
       socket.disconnect(true);
       return;
@@ -14,7 +17,10 @@ export default function setupSocketHandlers(io) {
     const username = session.user.username;
     const userId = session.user._id;
     socket.data.username = username;
+
     userSockets.set(username, socket);
+
+    socket.emit('session info', { username });
 
     async function recoverMessages(socket, lastMessageId) {
       try {

@@ -56,11 +56,21 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
+
   const user = await User.findOne({ username });
+
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).send('Invalid credentials');
   }
   req.session.user = { _id: user._id, username: user.username };
+
+  req.session.save((err)=>{
+    if(err){
+      console.log('Session save error : ' , err);
+      return res.status(500).send('Saving session error');
+    }
+  });
+
   res.send('Logged in successfully');
 });
 

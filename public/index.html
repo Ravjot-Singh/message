@@ -75,6 +75,11 @@
                     retries: 3
                 });
 
+                socket.on('session info', (data) => {
+                    socket.data = socket.data || {};
+                    socket.data.username = data.username;
+                });
+
                 socket.on('connect_error', (err) => {
                     console.error("Connection error:", err.message);
                     window.location.href = '/login';
@@ -82,13 +87,53 @@
 
                 socket.on('chat message', (msg, msgId, clientOffset, senderUsername) => {
                     const messages = document.getElementById('messages-chat');
+
                     const item = document.createElement("li");
-                    item.textContent = `${senderUsername}: ${msg}`;
                     item.classList.add(senderUsername === socket.data?.username ? 'sent' : 'received');
+                    item.dataset.messageId = msgId;
+                    item.dataset.sender = senderUsername;
+
+
+                    const label = document.createElement('span');
+                    label.textContent = `${senderUsername}: ${msg}`;
+                    item.appendChild(label);
+
+                    // Add edit/delete buttons for own messages
+                    console.log(socket.data?.username);
+                    if (senderUsername === socket.data?.username) {
+                        const editBtn = document.createElement('button');
+                        editBtn.textContent = '✏️';
+                        editBtn.onclick = () => {
+                            const newContent = prompt('Edit your message:', msg);
+                            if (newContent && newContent.trim() !== msg) {
+                                socket.emit('edit message', {
+                                    messageId: msgId,
+                                    newContent: newContent.trim()
+                                }, (response) => {
+                                    if (response.error) alert(response.error);
+                                });
+                            }
+                        };
+
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.textContent = '🗑️';
+                        deleteBtn.onclick = () => {
+                            if (confirm('Are you sure you want to delete this message?')) {
+                                socket.emit('delete message', msgId, (response) => {
+                                    if (response.error) alert(response.error);
+                                });
+                            }
+                        };
+
+                        item.appendChild(editBtn);
+                        item.appendChild(deleteBtn);
+                    }
+
                     messages.appendChild(item);
 
                     serverOffset = msgId;
                     socket.auth.serverOffset = serverOffset;
+
                 });
 
 
@@ -126,6 +171,23 @@
                 });
 
 
+                socket.on('message edited', ({ messageId, newContent, edited }) => {
+                    const messageItem = document.querySelector(`[data-message-id="${messageId}"]`);
+                    if (messageItem) {
+                        const sender = messageItem.dataset.sender;
+                        messageItem.firstChild.textContent = `${sender}: ${newContent}${edited ? ' (edited)' : ''}`;
+                    }
+                });
+
+                socket.on('message deleted', (messageId) => {
+                    const messageItem = document.querySelector(`[data-message-id="${messageId}"]`);
+                    if (messageItem) {
+                        messageItem.remove();
+                    }
+                });
+
+
+
 
             } catch (err) {
                 console.error(err);
@@ -159,7 +221,7 @@
                     document.getElementById('input-file').value = '';
                 }).catch(console.error);
             }
-            
+
 
             if (message) {
                 sentMessages.add(clientOffset);

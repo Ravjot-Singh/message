@@ -11,6 +11,8 @@ import setupRoutes from './src/routes/main.routes.js';
 import setupSocketHandlers from './src/sockets/socket.handlers.js';
 import path from 'path';
 import uploadRoutes from './src/routes/upload.routes.js'
+import sharedsession from 'express-socket.io-session';
+import session from 'express-session';
 
 const app = express();
 const server = createServer(app);
@@ -30,9 +32,14 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
-io.use((socket, next) => {
+
+/*io.use((socket, next) => {
     sessionMiddleware(socket.request, {}, next);
-});
+});*/
+
+io.use(sharedsession(sessionMiddleware, {
+  autoSave: true
+}));
 
 // Routes
 setupRoutes(app);
