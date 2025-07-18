@@ -44,7 +44,8 @@
 
             const res = await fetch('/upload', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                credentials: 'include'
             });
 
             if (!res.ok) throw new Error('Upload failed');
