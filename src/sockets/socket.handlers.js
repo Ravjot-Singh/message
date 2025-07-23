@@ -20,7 +20,7 @@ export default function setupSocketHandlers(io) {
 
     userSockets.set(username, socket);
 
-    socket.emit('session info', { username });
+    socket.emit('session info', { username }); 
 
     async function recoverMessages(socket, lastMessageId) {
       try {
